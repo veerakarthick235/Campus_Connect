@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mentor Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="dashboard-header">
+        <h1>Mentor Dashboard</h1>
+        <div>
+            <span id="user-name">Welcome!</span>
+            <button id="logout-btn">Logout</button>
+        </div>
+    </header>
+    <main class="dashboard-container">
+        <section class="dashboard-section">
+            <h2>Pending Approvals</h2>
+            <p>Review applications from your mentees.</p>
+            <div id="approval-list" class="card-container">
+                </div>
+        </section>
+    </main>
+    <script src="/static/js/main.js"></script>
+    <script>
+        // --- Role guard to ensure only mentors can see this page ---
+        async function checkRole(expectedRole) {
+            const token = localStorage.getItem('token');
+            if (!token) { window.location.href = '/'; return; }
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                if (payload.role !== expectedRole) { window.location.href = `/dashboard/${payload.role}`; }
+            } catch (e) { logout(); }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- These are the ONLY two functions that should run on this page ---
+            checkRole('mentor');
+            fetchMentorApplications();
+        });
+
+        async function fetchMentorApplications() {
+            const response = await fetchWithAuth('/api/mentor/applications');
+            const applications = await response.json();
+            const list = document.getElementById('approval-list');
+            list.innerHTML = '';
+            if (!applications || applications.length === 0) {
+                list.innerHTML = '<p>No pending applications for review.</p>';
+            } else {
+                applications.forEach(app => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <h3>${app.student_info.name}</h3>
+                        <p>Applied for: <strong>${app.internship_info.title}</strong> at ${app.internship_info.company}</p>
+                        <p>Status: <span class="status status-${app.status.toLowerCase()}">${app.status}</span></p>
+                        <div class="actions">
+                            <button class="approve-btn" onclick="updateApplicationStatus('${app._id}', 'Approved_by_Mentor')">Approve</button>
+                            <button class="reject-btn" onclick="updateApplicationStatus('${app._id}', 'Rejected')">Reject</button>
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+            }
+        }
+
+        async function updateApplicationStatus(appId, status) {
+            const response = await fetchWithAuth(`/api/applications/${appId}/status`, {
+                method: 'PUT',
+                body: JSON.stringify({ status: status })
+            });
+            if (response.ok) {
+                alert(`Application ${status === 'Rejected' ? 'Rejected' : 'Approved'}!`);
+                fetchMentorApplications(); // Refresh the list
+            } else {
+                alert('Failed to update application status.');
+            }
+        }
+    </script>
+</body>
+</html>

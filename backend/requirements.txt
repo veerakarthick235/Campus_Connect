@@ -1,0 +1,6 @@
+Flask
+pymongo[srv]
+bcrypt
+python-dotenv
+pyJWT
+Flask-Mail

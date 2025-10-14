@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Student Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="dashboard-header">
+        <h1>Student Dashboard</h1>
+        <div>
+            <span id="user-name">Welcome!</span>
+            <button id="logout-btn">Logout</button>
+        </div>
+    </header>
+    <main class="dashboard-container">
+        <section class="dashboard-section">
+            <h2>My Profile</h2>
+            <form id="profile-form" class="card">
+                <div class="form-grid">
+                    <div>
+                        <label for="profile-gpa">GPA</label>
+                        <input type="number" step="0.01" id="profile-gpa" placeholder="Your GPA">
+                    </div>
+                    <div>
+                        <label for="profile-skills">Skills (comma-separated)</label>
+                        <input type="text" id="profile-skills" placeholder="Python, JavaScript, SQL">
+                    </div>
+                </div>
+                <label for="profile-projects">Project Links (comma-separated)</label>
+                <input type="text" id="profile-projects" placeholder="https://github.com/user/project1, ...">
+                
+                <label for="profile-resume">Upload Resume (PDF)</label>
+                <input type="file" id="profile-resume" accept=".pdf">
+                <p>Current Resume: <a id="current-resume-link" href="#">None</a></p>
+
+                <button type="submit">Update Profile</button>
+            </form>
+        </section>
+        <section class="dashboard-section">
+            <h2>Recommended For You</h2>
+            <div id="recommendation-list" class="card-container"></div>
+        </section>
+        <section class="dashboard-section">
+            <h2>Available Internships</h2>
+            <div id="internship-list" class="card-container"></div>
+        </section>
+        <section class="dashboard-section">
+            <h2>My Applications</h2>
+            <div id="application-list" class="card-container"></div>
+        </section>
+    </main>
+
+    <script src="/static/js/main.js"></script>
+    <script>
+        async function checkRole(expectedRole) {
+            const token = localStorage.getItem('token');
+            if (!token) { window.location.href = '/'; return; }
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                if (payload.role !== expectedRole) { window.location.href = `/dashboard/${payload.role}`; }
+            } catch (e) { logout(); }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkRole('student');
+            loadProfile();
+            fetchRecommendations();
+            fetchInternships();
+            fetchStudentApplications();
+
+            document.getElementById('profile-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData();
+                formData.append('gpa', document.getElementById('profile-gpa').value);
+                formData.append('skills', document.getElementById('profile-skills').value);
+                formData.append('projects', document.getElementById('profile-projects').value);
+                const resumeFile = document.getElementById('profile-resume').files[0];
+                if(resumeFile) { formData.append('resume', resumeFile); }
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/student/profile', {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                if (response.ok) {
+                    alert('Profile updated successfully!');
+                    loadProfile();
+                } else {
+                    alert('Failed to update profile.');
+                }
+            });
+        });
+
+        async function loadProfile() {
+            const response = await fetchWithAuth('/api/current_user');
+            const user = await response.json();
+            document.getElementById('profile-gpa').value = user.gpa || '';
+            document.getElementById('profile-skills').value = (user.skills || []).join(', ');
+            document.getElementById('profile-projects').value = (user.projects || []).join(', ');
+            
+            const resumeLink = document.getElementById('current-resume-link');
+            if(user.resume_filename) {
+                resumeLink.textContent = user.resume_filename;
+                resumeLink.href = "#"; 
+                resumeLink.onclick = () => viewResume(user.resume_filename);
+            } else {
+                resumeLink.textContent = 'No resume uploaded.';
+                resumeLink.onclick = null;
+            }
+        }
+
+        async function viewResume(filename) {
+            try {
+                const response = await fetchWithAuth(`/uploads/resumes/${filename}`);
+                if (!response.ok) throw new Error('Could not download resume.');
+                const blob = await response.blob();
+                const fileURL = URL.createObjectURL(blob);
+                window.open(fileURL, '_blank');
+            } catch (error) {
+                console.error("Resume view error:", error);
+                alert("Could not load resume.");
+            }
+        }
+
+        async function fetchRecommendations() {
+            const response = await fetchWithAuth('/api/student/recommendations');
+            const internships = await response.json();
+            const list = document.getElementById('recommendation-list');
+            list.innerHTML = '';
+            if (!internships || internships.length === 0) {
+                list.innerHTML = '<p>No recommendations available. Update your skills to get started!</p>';
+                return;
+            }
+            internships.forEach(internship => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <h3>${internship.title} <span class="match-badge">${internship.match_score}/${internship.total_skills} Skills Match</span></h3>
+                    <p><strong>Company:</strong> ${internship.company}</p>
+                    <button onclick="apply('${internship._id}')">Apply</button>
+                `;
+                list.appendChild(card);
+            });
+        }
+        
+        async function fetchInternships() {
+            const response = await fetchWithAuth('/api/internships');
+            const internships = await response.json();
+            const list = document.getElementById('internship-list');
+            list.innerHTML = '';
+            if (internships.length === 0) {
+                list.innerHTML = '<p>No internships posted yet.</p>';
+            } else {
+                internships.forEach(internship => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <h3>${internship.title}</h3>
+                        <p><strong>Company:</strong> ${internship.company}</p>
+                        <p><strong>Skills:</strong> ${internship.required_skills.join(', ')}</p>
+                        <p><strong>Stipend:</strong> ${internship.stipend}</p>
+                        <button onclick="apply('${internship._id}')">Apply</button>
+                    `;
+                    list.appendChild(card);
+                });
+            }
+        }
+
+        async function fetchStudentApplications() {
+            const response = await fetchWithAuth('/api/student/applications');
+            const applications = await response.json();
+            const list = document.getElementById('application-list');
+            list.innerHTML = '';
+            if (applications && applications.length > 0) {
+                applications.forEach(app => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    let interviewInfo = '';
+                    if (app.interview_slot) {
+                        interviewInfo = `<p class="interview-slot"><strong>Interview:</strong> ${new Date(app.interview_slot).toLocaleString()}</p>`;
+                    }
+                    card.innerHTML = `
+                        <h3>${app.internship_details.title}</h3>
+                        <p><strong>Company:</strong> ${app.internship_details.company}</p>
+                        <p><strong>Status:</strong> <span class="status status-${app.status.toLowerCase().replace(/\s/g, '_')}">${app.status}</span></p>
+                        ${interviewInfo}
+                    `;
+                    list.appendChild(card);
+                });
+            } else {
+                 list.innerHTML = '<p>You have not applied to any internships.</p>';
+            }
+        }
+        
+        async function apply(internshipId) {
+            const response = await fetchWithAuth(`/api/apply/${internshipId}`, { method: 'POST' });
+            const result = await response.json();
+            if (response.ok) {
+                alert('Application successful!');
+                fetchStudentApplications();
+            } else {
+                alert(`Error: ${result.error}`);
+            }
+        }
+    </script>
+</body>
+</html>

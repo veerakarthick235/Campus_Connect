@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Placement Cell Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header class="dashboard-header">
+        <h1>Placement Cell Dashboard</h1>
+        <div>
+            <span id="user-name">Welcome!</span>
+            <button id="logout-btn">Logout</button>
+        </div>
+    </header>
+    <main class="dashboard-container">
+        <section class="dashboard-section">
+            <h2>Analytics Dashboard</h2>
+            <div class="chart-container">
+                <div>
+                    <h3>Application Status Distribution</h3>
+                    <canvas id="statusChart"></canvas>
+                </div>
+                <div>
+                    <h3>Top Company Engagement</h3>
+                    <canvas id="companyChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section class="dashboard-section">
+            <h2>Post a New Internship</h2>
+            <form id="new-internship-form" class="card">
+                <input type="text" id="title" placeholder="Internship Title" required>
+                <input type="text" id="company" placeholder="Company Name" required>
+                <input type="text" id="location" placeholder="Location" required>
+                <input type="text" id="stipend" placeholder="Stipend (e.g., ₹10,000/month)" required>
+                <textarea id="description" placeholder="Job Description" required></textarea>
+                <input type="text" id="skills" placeholder="Required Skills (comma-separated)" required>
+                <button type="submit">Post Internship</button>
+            </form>
+        </section>
+
+        <section class="dashboard-section">
+            <h2>All Student Applications</h2>
+            <div id="all-applications-list" class="card-container"></div>
+        </section>
+    </main>
+    <script src="/static/js/main.js"></script>
+    <script>
+        async function checkRole(expectedRole) {
+            const token = localStorage.getItem('token');
+            if (!token) { window.location.href = '/'; return; }
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                if (payload.role !== expectedRole) { window.location.href = `/dashboard/${payload.role}`; }
+            } catch (e) { logout(); }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkRole('placement_cell');
+            loadAnalytics();
+            fetchAllApplications();
+
+            document.getElementById('new-internship-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const internshipData = {
+                    title: document.getElementById('title').value,
+                    company: document.getElementById('company').value,
+                    location: document.getElementById('location').value,
+                    stipend: document.getElementById('stipend').value,
+                    description: document.getElementById('description').value,
+                    required_skills: document.getElementById('skills').value.split(',').map(s => s.trim()),
+                };
+                const response = await fetchWithAuth('/api/internships', {
+                    method: 'POST',
+                    body: JSON.stringify(internshipData)
+                });
+                if (response.ok) {
+                    alert('Internship posted successfully!');
+                    e.target.reset();
+                } else {
+                    alert('Failed to post internship.');
+                }
+            });
+        });
+
+        async function loadAnalytics() {
+            const response = await fetchWithAuth('/api/placement/analytics');
+            const data = await response.json();
+            if (!data) return;
+
+            const statusCtx = document.getElementById('statusChart').getContext('2d');
+            new Chart(statusCtx, {
+                type: 'pie',
+                data: {
+                    labels: data.status_distribution.map(d => d._id),
+                    datasets: [{ data: data.status_distribution.map(d => d.count), backgroundColor: ['#007bff', '#ffc107', '#005A9C', '#28a745', '#dc3545', '#6c757d'] }]
+                }
+            });
+
+            const companyCtx = document.getElementById('companyChart').getContext('2d');
+            new Chart(companyCtx, {
+                type: 'bar',
+                data: {
+                    labels: data.company_engagement.map(d => d._id),
+                    datasets: [{ label: '# of Applications', data: data.company_engagement.map(d => d.count), backgroundColor: '#005A9C' }]
+                },
+                options: { indexAxis: 'y' }
+            });
+        }
+        
+        async function fetchAllApplications() {
+            const response = await fetchWithAuth('/api/placement/applications');
+            const applications = await response.json();
+            const list = document.getElementById('all-applications-list');
+            list.innerHTML = '';
+            if (applications && applications.length > 0) {
+                applications.forEach(app => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <h3>${app.internship_info.title} at ${app.internship_info.company}</h3>
+                        <p><strong>Applicant:</strong> ${app.student_info.name} (${app.student_info.email})</p>
+                        <p><strong>Status:</strong> 
+                            <select onchange="updateStatus('${app._id}', this.value)">
+                                <option value="Applied" ${app.status === 'Applied' ? 'selected' : ''}>Applied</option>
+                                <option value="Approved_by_Mentor" ${app.status === 'Approved_by_Mentor' ? 'selected' : ''}>Approved by Mentor</option>
+                                <option value="Shortlisted" ${app.status === 'Shortlisted' ? 'selected' : ''}>Shortlisted</option>
+                                <option value="Interview Scheduled" ${app.status === 'Interview Scheduled' ? 'selected' : ''}>Interview Scheduled</option>
+                                <option value="Hired" ${app.status === 'Hired' ? 'selected' : ''}>Hired</option>
+                                <option value="Rejected" ${app.status === 'Rejected' ? 'selected' : ''}>Rejected</option>
+                            </select>
+                        </p>
+                        <div class="schedule-form">
+                            <input type="datetime-local" id="schedule-${app._id}">
+                            <button onclick="scheduleInterview('${app._id}')">Schedule Interview</button>
+                        </div>`;
+                    list.appendChild(card);
+                });
+            } else {
+                 list.innerHTML = '<p>No student applications found.</p>';
+            }
+        }
+        
+        async function updateStatus(appId, newStatus) {
+            const response = await fetchWithAuth(`/api/applications/${appId}/status`, {
+                method: 'PUT',
+                body: JSON.stringify({ status: newStatus })
+            });
+            if (response.ok) {
+                alert('Status updated!');
+            } else {
+                alert('Failed to update status.');
+            }
+        }
+
+        async function scheduleInterview(appId) {
+            const slot = document.getElementById(`schedule-${appId}`).value;
+            if (!slot) { alert('Please select a date and time.'); return; }
+            const response = await fetchWithAuth(`/api/applications/${appId}/schedule`, {
+                method: 'PUT',
+                body: JSON.stringify({ interview_slot: slot })
+            });
+            if (response.ok) {
+                alert('Interview scheduled and student notified!');
+                fetchAllApplications();
+            } else {
+                alert('Failed to schedule interview.');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusConnect - Welcome</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="main-header">
+        <h1>CampusConnect Portal</h1>
+    </header>
+    <main class="auth-container">
+        <div class="auth-form-container" id="login-container">
+            <h2>Login</h2>
+            <form id="login-form">
+                <input type="email" id="login-email" placeholder="Email" required>
+                <input type="password" id="login-password" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
+            <p>Don't have an account? <a href="#" id="show-register">Register here</a></p>
+        </div>
+
+        <div class="auth-form-container" id="register-container" style="display:none;">
+            <h2>Register</h2>
+            <form id="register-form">
+                <input type="text" id="register-name" placeholder="Full Name" required>
+                <input type="email" id="register-email" placeholder="Email" required>
+                <input type="password" id="register-password" placeholder="Password" required>
+                <select id="register-role" required>
+                    <option value="" disabled selected>Select your role</option>
+                    <option value="student">Student</option>
+                    <option value="placement_cell">Placement Cell</option>
+                    <option value="mentor">Mentor</option>
+                </select>
+                <input type="text" id="register-department" placeholder="Department (Students only)" style="display:none;">
+                <button type="submit">Register</button>
+            </form>
+            <p>Already have an account? <a href="#" id="show-login">Login here</a></p>
+        </div>
+        <p id="error-message" class="error-text"></p>
+    </main>
+    <script src="/static/js/auth.js"></script>
+</body>
+</html>
